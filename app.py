@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+from streamlit_searchbox import st_searchbox
 
 import dados
 
@@ -115,13 +116,26 @@ st.caption(
     "para abertura e quantos alunos existem na região."
 )
 
-col1, col2, col3 = st.columns([3, 1, 1])
+# Campo de cidade com autocomplete. Fica num fragmento para que cada tecla
+# digitada recarregue SÓ o campo (e não o mapa e as tabelas lá embaixo).
+# A cidade escolhida fica em st.session_state["cidade_ref"]["result"] como a
+# tupla (nome_oficial, uf) — ex.: ("Nova Viçosa", "BA").
+@st.fragment
+def campo_cidade():
+    st_searchbox(
+        dados.buscar_municipios,
+        key="cidade_ref",
+        label="Cidade de referência",
+        placeholder="Comece a digitar... (ex.: Nova Viçosa, sao mateus, contagem mg)",
+        rerun_scope="fragment",
+        debounce=200,
+    )
+
+
+col1, col2 = st.columns([4, 1])
 with col1:
-    cidade_input = st.text_input("Cidade de referência", placeholder="Ex: Nova Viçosa")
+    campo_cidade()
 with col2:
-    ufs_disponiveis = sorted(municipios["uf"].dropna().unique())
-    uf_input = st.selectbox("UF", options=[""] + ufs_disponiveis)
-with col3:
     raio_km = st.number_input("Raio (km)", min_value=1, value=100, step=10)
 
 buscar_clicado = st.button("Analisar", type="primary")
@@ -131,9 +145,13 @@ buscar_clicado = st.button("Analisar", type="primary")
 # seguinte o st.button volta a ser False — sem isso, mapa e tabelas sumiriam
 # quase na hora.
 if buscar_clicado:
+    cidade_escolhida = st.session_state.get("cidade_ref", {}).get("result")
+    if not cidade_escolhida:
+        st.session_state["busca_ativa"] = False
+        st.warning("Digite e selecione uma cidade na lista.")
+        st.stop()
     st.session_state["busca_ativa"] = True
-    st.session_state["cidade_busca"] = cidade_input
-    st.session_state["uf_busca"] = uf_input
+    st.session_state["cidade_busca"], st.session_state["uf_busca"] = cidade_escolhida
     st.session_state["raio_busca"] = raio_km
 
 if st.session_state.get("busca_ativa"):
@@ -141,24 +159,10 @@ if st.session_state.get("busca_ativa"):
     uf_input = st.session_state["uf_busca"]
     raio_km = st.session_state["raio_busca"]
 
-    if not cidade_input or not uf_input:
-        st.warning("Informe a cidade e a UF.")
-        st.stop()
-
-    ref = municipios[
-        (municipios["nome"].str.strip().str.lower() == cidade_input.strip().lower())
-        & (municipios["uf"] == uf_input)
-    ]
-
-    if ref.empty:
-        # tenta um match aproximado para ajudar o usuário
-        candidatos = municipios[
-            municipios["nome"].str.contains(cidade_input.strip(), case=False, na=False)
-        ]
+    # a cidade veio da lista do autocomplete, então o nome já é o oficial do IBGE
+    ref = municipios[(municipios["nome"] == cidade_input) & (municipios["uf"] == uf_input)]
+    if ref.empty:  # não deveria acontecer; só por segurança
         st.error(f"Cidade '{cidade_input} - {uf_input}' não encontrada.")
-        if not candidatos.empty:
-            st.write("Você quis dizer:")
-            st.dataframe(candidatos[["nome", "uf"]].head(10), hide_index=True)
         st.stop()
 
     lat_ref = ref.iloc[0]["latitude"]
