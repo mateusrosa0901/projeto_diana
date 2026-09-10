@@ -1,0 +1,5 @@
+credentials/pragmata-auth.json
+.streamlit/secrets.toml
+credentials/env.py
+data/*
+__pycache__/*
