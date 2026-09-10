@@ -3,3 +3,4 @@ credentials/pragmata-auth.json
 credentials/env.py
 data/*
 __pycache__/*
+.idea
