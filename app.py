@@ -363,3 +363,83 @@ if st.session_state.get("busca_ativa"):
         )
 
     st.caption(f"Alunos na própria {nome_ref}: {alunos_propria}")
+
+    # ---------------- cursos com mais matrículas no raio ----------------
+    st.markdown("### 📚 Cursos com mais matrículas na região (raio)")
+    alunos_por_curso = bases.get("alunos_por_curso")
+    if alunos_por_curso is None:
+        st.info(
+            "A base de alunos ainda não tem a coluna de curso configurada. "
+            "Adicione `col_curso = \"<nome da coluna>\"` em `[fontes.alunos]` "
+            "no secrets.toml."
+        )
+    else:
+        cursos_raio = alunos_por_curso.merge(
+            raio_df[["nome", "uf"]],
+            left_on=["municipio_ibge", "uf"],
+            right_on=["nome", "uf"],
+            how="inner",
+        ).drop(columns="nome")
+
+        if cursos_raio.empty:
+            st.info("Nenhum aluno com curso encontrado nas cidades do raio.")
+        else:
+            ranking = (
+                cursos_raio.groupby("curso")
+                .agg(qtd_alunos=("qtd_alunos", "sum"), cidades=("municipio_ibge", "nunique"))
+                .reset_index()
+                # no empate, "(curso não informado)" fica depois dos cursos reais
+                .assign(_sem=lambda d: d["curso"] == dados.SEM_CURSO)
+                .sort_values(["qtd_alunos", "_sem", "curso"], ascending=[False, True, True])
+                .drop(columns="_sem")
+            )
+            ranking.insert(0, "posicao", range(1, len(ranking) + 1))
+            ranking["pct"] = 100 * ranking["qtd_alunos"] / ranking["qtd_alunos"].sum()
+
+            top = ranking.iloc[0]
+            st.write(
+                f"**{len(ranking)} curso(s)** com alunos no raio. "
+                f"Mais procurado: **{top['curso']}** ({int(top['qtd_alunos'])} aluno(s), "
+                f"{top['pct']:.1f}%)."
+            )
+            st.dataframe(
+                ranking,
+                hide_index=True,
+                column_config={
+                    "posicao": st.column_config.NumberColumn("#", width="small"),
+                    "curso": "Curso",
+                    "qtd_alunos": st.column_config.NumberColumn("Qtd. Alunos"),
+                    "cidades": st.column_config.NumberColumn(
+                        "Cidades", help="Em quantas cidades do raio o curso tem alunos"
+                    ),
+                    "pct": st.column_config.ProgressColumn(
+                        "% do raio", format="%.1f%%", min_value=0,
+                        max_value=float(ranking["pct"].max()),
+                    ),
+                },
+            )
+
+            with st.expander("Ver cursos por cidade"):
+                por_cidade = (
+                    cursos_raio.merge(
+                        raio_df[["nome", "uf", "dist_km"]],
+                        left_on=["municipio_ibge", "uf"],
+                        right_on=["nome", "uf"],
+                    )
+                    .sort_values(["dist_km", "qtd_alunos"], ascending=[True, False])
+                )
+                st.dataframe(
+                    por_cidade[["municipio_ibge", "uf", "dist_km", "curso", "qtd_alunos"]].rename(
+                        columns={
+                            "municipio_ibge": "Cidade",
+                            "uf": "UF",
+                            "dist_km": "Distância (km)",
+                            "curso": "Curso",
+                            "qtd_alunos": "Qtd. Alunos",
+                        }
+                    ),
+                    hide_index=True,
+                    column_config={
+                        "Distância (km)": st.column_config.NumberColumn(format="%.1f")
+                    },
+                )

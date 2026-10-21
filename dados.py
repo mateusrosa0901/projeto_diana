@@ -41,7 +41,12 @@ SCOPES = [
 # Configuração usada no modo LOCAL (CSVs antigos da pasta data/).
 # No modo Google Sheets, isso vem de [fontes.*] no secrets.toml.
 FONTES_LOCAIS = {
-    "alunos": {"arquivo": "alunos.csv", "col_cidade": "municipio_ibge", "col_uf": "uf"},
+    "alunos": {
+        "arquivo": "alunos.csv",
+        "col_cidade": "municipio_ibge",
+        "col_uf": "uf",
+        "col_curso": "curso",
+    },
     "polos": {
         "arquivo": "polos.csv",
         "col_cidade": "cidade_original",
@@ -379,11 +384,43 @@ def _ler_fonte(nome_base: str):
     col_uf = _coluna(bruto, cfg.get("col_uf"), nome_base)
     extras = {
         k: _coluna(bruto, cfg.get(k), nome_base, obrigatoria=False)
-        for k in ("col_status", "col_bairro")
+        for k in ("col_status", "col_bairro", "col_curso")
     }
     # Mantém SÓ as colunas necessárias (nome de aluno etc. é descartado aqui)
     manter = [c for c in [col_cidade, col_uf, *extras.values()] if c]
     return bruto[manter].copy(), col_cidade, col_uf, extras
+
+
+SEM_CURSO = "(curso não informado)"
+
+
+def _agrupar_por_curso(alunos: pd.DataFrame, col_curso: str) -> pd.DataFrame:
+    """Conta alunos por (municipio_ibge, uf, curso).
+
+    O nome do curso também é digitado à mão, então 'Pedagogia', 'PEDAGOGIA ' e
+    'pedagogia' são tratados como o mesmo curso. Na tabela aparece a grafia
+    mais usada na planilha.
+    """
+    df = alunos[["municipio_ibge", "uf", col_curso]].copy()
+    df["curso"] = (
+        df[col_curso].fillna("").astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+    )
+    df.loc[df["curso"].str.lower().isin(["", "nan", "-"]), "curso"] = SEM_CURSO
+    df["_chave"] = df["curso"].map(normalizar)
+
+    grafia = (
+        df.groupby(["_chave", "curso"]).size().reset_index(name="n")
+        # empate: prefere 'Pedagogia' a 'PEDAGOGIA'
+        .assign(_caixa_alta=lambda d: d["curso"].str.isupper())
+        .sort_values(["_chave", "n", "_caixa_alta"], ascending=[True, False, True])
+        .drop_duplicates("_chave")
+        .set_index("_chave")["curso"]
+    )
+    df["curso"] = df["_chave"].map(grafia)
+    return (
+        df.groupby(["municipio_ibge", "uf", "curso"]).size()
+        .reset_index(name="qtd_alunos")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -403,13 +440,17 @@ def carregar_bases() -> dict:
     falhas = {}
 
     # --- Alunos: agregamos por cidade na hora; nenhum dado pessoal fica em memória
-    bruto, c_cid, c_uf, _ = _ler_fonte("alunos")
+    bruto, c_cid, c_uf, extras = _ler_fonte("alunos")
     total_alunos_planilha = len(bruto)
     alunos_ok, falhas["Alunos"] = geo.aplicar(bruto, c_cid, c_uf)
     alunos_por_cidade = (
         alunos_ok.groupby(["municipio_ibge", "uf", "latitude", "longitude"])
         .size()
         .reset_index(name="qtd_alunos")
+    )
+    # Contagem por cidade x curso (só se a planilha tiver a coluna de curso)
+    alunos_por_curso = (
+        _agrupar_por_curso(alunos_ok, extras["col_curso"]) if extras["col_curso"] else None
     )
 
     # --- Polos
@@ -433,6 +474,7 @@ def carregar_bases() -> dict:
     return {
         "municipios": municipios,
         "alunos_por_cidade": alunos_por_cidade,
+        "alunos_por_curso": alunos_por_curso,  # None se não houver col_curso
         "total_alunos_planilha": total_alunos_planilha,
         "polos": polos,
         "localidades": localidades,
