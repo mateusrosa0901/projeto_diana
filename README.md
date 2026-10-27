@@ -7,7 +7,8 @@ cruza essa região com as bases do setor:
 1. **Polos** cadastrados na própria cidade e nas vizinhas, com status
 2. **Cidades prioritárias** para abertura de polo dentro do raio
 3. **Quantidade de alunos** em cada cidade do raio
-4. Um **mapa interativo** com tudo isso (zoom e clique nos marcadores para ver detalhes)
+4. **Cursos com mais matrículas** na região (ranking do raio, com detalhe por cidade)
+5. Um **mapa interativo** com tudo isso (zoom e clique nos marcadores para ver detalhes)
 
 As bases de alunos, polos e localidades prioritárias são lidas **direto das
 planilhas do Google Sheets** mantidas pelo setor. Quando alguém atualiza uma
@@ -144,6 +145,7 @@ preencha as três seções abaixo.
 | `col_uf` | não | Nome da coluna com a UF. Deixe vazio se a UF vier junto da cidade. |
 | `col_status` | não (polos) | Coluna com o status do polo. |
 | `col_bairro` | não (polos) | Coluna com o bairro do polo. |
+| `col_curso` | não (alunos) | Coluna com o curso do aluno. Habilita a tabela **📚 Cursos com mais matrículas na região**. Grafias diferentes do mesmo curso (`Pedagogia`, `PEDAGOGIA `) são somadas juntas; linhas sem curso aparecem como *(curso não informado)*. |
 
 \* Informe `sheet_id` **ou** `titulo`.
 
@@ -161,6 +163,7 @@ sheet_id = "ID_DA_PLANILHA_DE_ALUNOS"
 aba = "Agosto"
 col_cidade = "cidade"
 col_uf = "uf"
+col_curso = "curso"
 
 [fontes.polos]
 sheet_id = "ID_DA_PLANILHA_DE_POLOS"
