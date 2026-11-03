@@ -21,7 +21,6 @@ import pandas as pd
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from streamlit_searchbox import st_searchbox
 
 import dados
 
@@ -116,19 +115,22 @@ st.caption(
     "para abertura e quantos alunos existem na região."
 )
 
-# Campo de cidade com autocomplete. Fica num fragmento para que cada tecla
-# digitada recarregue SÓ o campo (e não o mapa e as tabelas lá embaixo).
-# A cidade escolhida fica em st.session_state["cidade_ref"]["result"] como a
-# tupla (nome_oficial, uf) — ex.: ("Nova Viçosa", "BA").
+# Campo de cidade: st.selectbox nativo (dá para digitar e filtrar a lista).
+# Antes era o componente streamlit-searchbox, que no Streamlit Cloud às vezes
+# não carregava ("having trouble loading the streamlit_searchbox component").
+# Fica num fragmento para que escolher a cidade recarregue SÓ o campo (e não o
+# mapa e as tabelas lá embaixo). A cidade escolhida fica em
+# st.session_state["cidade_ref"] como a tupla (nome_oficial, uf) — ex.:
+# ("Nova Viçosa", "BA").
 @st.fragment
 def campo_cidade():
-    st_searchbox(
-        dados.buscar_municipios,
+    st.selectbox(
+        "Cidade de referência",
+        options=dados.opcoes_municipios(),
+        format_func=dados.rotulo_municipio,
+        index=None,
         key="cidade_ref",
-        label="Cidade de referência",
         placeholder="Comece a digitar... (ex.: Nova Viçosa, sao mateus, contagem mg)",
-        rerun_scope="fragment",
-        debounce=200,
     )
 
 
@@ -145,7 +147,7 @@ buscar_clicado = st.button("Analisar", type="primary")
 # seguinte o st.button volta a ser False — sem isso, mapa e tabelas sumiriam
 # quase na hora.
 if buscar_clicado:
-    cidade_escolhida = st.session_state.get("cidade_ref", {}).get("result")
+    cidade_escolhida = st.session_state.get("cidade_ref")
     if not cidade_escolhida:
         st.session_state["busca_ativa"] = False
         st.warning("Digite e selecione uma cidade na lista.")

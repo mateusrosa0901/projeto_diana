@@ -248,63 +248,32 @@ class Geocodificador:
 
 
 # ---------------------------------------------------------------------------
-# Busca de município para o campo com autocomplete (app.py)
+# Opções do campo "Cidade de referência" (st.selectbox nativo, em app.py)
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner=False)
-def indice_municipios() -> list[tuple[str, tuple[str, ...], str, str]]:
-    """Lista (nome_normalizado, palavras, nome_oficial, uf) de todos os municípios."""
-    municipios, _, _ = carregar_referencias()
-    indice = []
-    for nome, uf in zip(municipios["nome"], municipios["uf"]):
-        chave = normalizar(nome)
-        indice.append((chave, tuple(chave.split()), nome, uf))
-    return indice
+def opcoes_municipios() -> list[tuple[str, str]]:
+    """Todos os municípios como (nome_oficial, uf), em ordem alfabética.
 
-
-def _palavras_batem(termos: list[str], palavras: tuple[str, ...]) -> bool:
-    """Cada termo digitado precisa ser o início de alguma palavra do nome.
-    Ex.: 'jose campos' bate com 'sao jose dos campos'."""
-    return all(any(p.startswith(t) for p in palavras) for t in termos)
-
-
-def buscar_municipios(termo: str, limite: int = 15) -> list[tuple[str, tuple[str, str]]]:
-    """Sugestões para o autocomplete: [('Nova Viçosa - BA', ('Nova Viçosa', 'BA')), ...].
-
-    - ignora acentos e maiúsculas ('sao mateus' acha 'São Mateus');
-    - aceita pedaços de palavras em qualquer ordem ('jose campos');
-    - aceita a UF no fim ('bom jesus pi', 'contagem - mg');
-    - quem começa com o texto digitado aparece primeiro.
+    Usado como lista de opções do st.selectbox; o valor escolhido já é a tupla
+    (nome_oficial, uf) — ex.: ("Nova Viçosa", "BA").
     """
-    alvo = normalizar(termo)
-    if len(alvo) < 2:
-        return []
-    termos = alvo.split()
-    indice = indice_municipios()
-    ufs = {uf for *_, uf in indice}
+    municipios, _, _ = carregar_referencias()
+    pares = set(zip(municipios["nome"], municipios["uf"]))
+    return sorted(pares, key=lambda p: (normalizar(p[0]), p[1]))
 
-    # último pedaço com 2 letras pode ser UF ('pa') ou início de palavra ('pa' de
-    # 'Paulo'): aceitamos as duas leituras
-    uf_digitada = termos[-1].upper() if len(termos) > 1 and termos[-1].upper() in ufs else None
-    alvo_sem_uf = " ".join(termos[:-1]) if uf_digitada else alvo
 
-    achados = []
-    for chave, palavras, nome, uf in indice:
-        if _palavras_batem(termos, palavras):
-            base = alvo
-        elif uf_digitada == uf and _palavras_batem(termos[:-1], palavras):
-            base = alvo_sem_uf
-        else:
-            continue
-        if chave == base:
-            ordem = 0  # nome exato
-        elif chave.startswith(base):
-            ordem = 1  # começa com o que foi digitado
-        else:
-            ordem = 2  # bate só por pedaços de palavras
-        achados.append((ordem, chave, uf, nome))
+def rotulo_municipio(opcao: tuple[str, str]) -> str:
+    """Texto mostrado na lista: 'Contagem - MG'.
 
-    achados.sort()
-    return [(f"{nome} - {uf}", (nome, uf)) for _, _, uf, nome in achados[:limite]]
+    O filtro do st.selectbox não ignora acentos (digitar 'sao mateus' não acha
+    'São Mateus'). Por isso, quando o nome tem acento ou cedilha, a grafia sem
+    acento vai junto entre parênteses: 'São Mateus - ES (sao mateus)'.
+    """
+    nome, uf = opcao
+    rotulo = f"{nome} - {uf}"
+    if not nome.isascii():
+        rotulo += f" ({normalizar(nome)})"
+    return rotulo
 
 
 # ---------------------------------------------------------------------------
